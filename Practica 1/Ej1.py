@@ -8,9 +8,7 @@ import cv2
 from scipy import ndimage
 from skimage import data, img_as_float
 
-#Lea alguno de los archivos de color de tipo tif descargado muéstrelo en una ventana mediante Pillow. Si 
-#no se visualiza bien intente poner el mapa de colores o paleta que se corresponda. Muestre también la 
-#barra de colores al lado de la imagen. ¿Cuántos colores tiene la imagen?
+#Utilizando cualquiera de las imágenes introducidas en el ejercicio anterior, aplique distintas transformaciones y compruebe el resultado. 
 
 dirimg = "Practica 1/Imagenes/"
 imagenes = ["zorro.tiff", "fish.gif", "paarthurmax.jpg", "diamante.png"]
@@ -28,6 +26,8 @@ def imgname(formato):
 
 
 if __name__ == "__main__":
-    #solo usaremos el zorro 
+
     img = Image.open(imgname("tif"))
-    print("Colores en la imagen:", img.getcolors())
+    img.show()
+    
+
