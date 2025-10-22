@@ -17,12 +17,14 @@ import numpy as np
 
 max_value = 255
 max_value_H = 360//2
-low_H = 45
-low_S = 23
-low_V = 0
-high_H = 120
-high_S = max_value
-high_V = max_value
+# Valores iniciales para detectar el fondo verde de las cartas
+# En HSV, el verde está alrededor de H=60 (en escala 0-180)
+low_H = 40   # Verde amarillento
+low_S = 50   # Saturación mínima para evitar grises
+low_V = 50   # Valor mínimo para evitar negros
+high_H = 80  # Verde azulado
+high_S = max_value  # Máxima saturación
+high_V = max_value  # Máximo brillo
 window_name = 'Original image'
 window_thresholded = 'Thresholded result'
 low_H_name = 'Low H'
@@ -83,7 +85,7 @@ cv2.createTrackbar(low_V_name, window_thresholded , low_V, max_value, on_low_V_t
 cv2.createTrackbar(high_V_name, window_thresholded , high_V, max_value, on_high_V_thresh_trackbar)
 
 
-folders = './output1/'
+folders = './Baraja_p_ker_1/Training/'  # Carpeta con las cartas de poker
 
 folder_name = filedialog.askdirectory(initialdir=folders)
 
@@ -99,8 +101,14 @@ for ent in list_files:
          key = -1
          while (key == -1):
              key=cv2.pollKey()
-             # Aquí va la función  cv2.inRange(....)
-             frame_threshold = cv2........
+             # Umbralización por rango de color usando HSV
+             # cv2.inRange(src, lowerb, upperb) -> máscara
+             # src: imagen fuente en HSV
+             # lowerb: límite inferior [H,S,V]
+             # upperb: límite superior [H,S,V]
+             frame_threshold = cv2.inRange(frame_HSV, 
+                                        (low_H, low_S, low_V), 
+                                        (high_H, high_S, high_V))
              
              cv2.imshow(window_thresholded, frame_threshold)
          if key == ord('q') or key == 27:    # 'q' o ESC para acabar
