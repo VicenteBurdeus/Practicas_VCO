@@ -1,102 +1,130 @@
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib import colors
 import os
 import glob
 
 def create_color_mask(image_hsv, lower_bound, upper_bound):
     """Crear máscara para un rango de color específico"""
-    mask = cv2.inRange(image_hsv, lower_bound, upper_bound)
+    return cv2.inRange(image_hsv, lower_bound, upper_bound)
+
+def apply_morphology(mask):
+    """Aplicar operaciones morfológicas para mejorar la máscara"""
+    kernel_small = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3,3))
+    kernel_medium = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5,5))
+    
+    # Eliminar ruido pequeño
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel_small)
+    # Rellenar huecos
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel_medium)
     return mask
 
-def plot_3d_color_space(image, image_hsv, color_masks=None, title="Distribución de colores"):
-    """Visualizar la distribución de colores en 3D con máscaras marcadas"""
-    fig = plt.figure(figsize=(15, 5))
-    
-    # Imagen original
-    ax1 = fig.add_subplot(1, 3, 1)
-    ax1.imshow(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
-    ax1.set_title("Imagen Original")
-    ax1.axis('off')
-    
-    # Máscara(s)
-    ax2 = fig.add_subplot(1, 3, 2)
-    if color_masks is not None:
-        combined_mask = np.zeros_like(color_masks[0])
-        for mask in color_masks:
-            combined_mask = cv2.bitwise_or(combined_mask, mask)
-        ax2.imshow(combined_mask, cmap='gray')
-        ax2.set_title("Máscara Combinada")
-    ax2.axis('off')
-    
-    # Distribución de colores 3D
-    ax3 = fig.add_subplot(1, 3, 3, projection='3d')
-    
-    # Preparar datos
-    h, s, v = cv2.split(image_hsv)
-    
-    # Convertir a RGB para visualización
-    pixel_colors = cv2.cvtColor(image, cv2.COLOR_BGR2RGB).reshape(-1, 3)
-    pixel_colors = pixel_colors.astype(float) / 255.0
-    
-    # Crear scatter plot
-    ax3.scatter(h.flatten(), s.flatten(), v.flatten(),
-                facecolors=pixel_colors, marker=".", alpha=0.1)
-    
-    # Si hay máscaras, resaltar los puntos seleccionados
-    if color_masks is not None:
-        for mask, color in zip(color_masks, ['red', 'white']):
-            masked_h = h[mask > 0]
-            masked_s = s[mask > 0]
-            masked_v = v[mask > 0]
-            ax3.scatter(masked_h, masked_s, masked_v,
-                       c=color, marker=".", alpha=0.3)
-    
-    ax3.set_xlabel("Hue")
-    ax3.set_ylabel("Saturation")
-    ax3.set_zlabel("Value")
-    ax3.set_title("Espacio de Color HSV")
-    
-    plt.tight_layout()
-    return fig
-
-def process_image(image_path):
-    """Procesar una imagen con segmentación de múltiples colores"""
-    # Leer imagen
-    image = cv2.imread(image_path)
-    if image is None:
-        print(f"No se pudo cargar la imagen: {image_path}")
-        return
-    
+def segment_nemo(image):
+    """Segmentar a Nemo usando múltiples rangos de color"""
     # Convertir a HSV
     image_hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
     
-    # Definir rangos de color para Nemo (naranja y blanco)
-    # Naranja (dos rangos para cubrir mejor el espectro del naranja)
-    lower_orange1 = np.array([0, 120, 100])    # Naranja rojizo
+    # Definir rangos de color
+    # Naranja (cuerpo principal)
+    lower_orange1 = np.array([0, 120, 100])
     upper_orange1 = np.array([10, 255, 255])
-    lower_orange2 = np.array([170, 120, 100])  # Naranja rojizo (continuación del espectro)
+    lower_orange2 = np.array([170, 120, 100])
     upper_orange2 = np.array([180, 255, 255])
     
-    # Blanco (ajustado para ser más selectivo)
-    lower_white = np.array([0, 0, 180])       # Aumentado el valor mínimo
+    # Blanco (franjas)
+    lower_white = np.array([0, 0, 180])
     upper_white = np.array([180, 40, 255])
     
-    # Crear máscaras
-    # Combinar los dos rangos de naranja
+    # Crear máscaras individuales
     mask_orange1 = create_color_mask(image_hsv, lower_orange1, upper_orange1)
     mask_orange2 = create_color_mask(image_hsv, lower_orange2, upper_orange2)
-    mask_orange = cv2.bitwise_or(mask_orange1, mask_orange2)
-    
-    # Crear máscara para blanco
     mask_white = create_color_mask(image_hsv, lower_white, upper_white)
     
-    # Mejorar las máscaras con operaciones morfológicas más sofisticadas
-    # Usar kernel elíptico para preservar mejor las formas curvas
-    kernel_small = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3,3))
-    kernel_medium = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5,5))
-    kernel_large = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7,7))
+    # Combinar máscaras naranjas
+    mask_orange = cv2.bitwise_or(mask_orange1, mask_orange2)
+    
+    # Aplicar mejoras morfológicas
+    mask_orange = apply_morphology(mask_orange)
+    mask_white = apply_morphology(mask_white)
+    
+    # Combinar todas las máscaras
+    mask_combined = cv2.bitwise_or(mask_orange, mask_white)
+    
+    # Aplicar la máscara a la imagen original
+    result = cv2.bitwise_and(image, image, mask=mask_combined)
+    
+    return mask_orange, mask_white, mask_combined, result
+
+def process_all_images():
+    """Procesar todas las imágenes de Nemo"""
+    # Obtener la ruta del script actual
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    images_dir = os.path.join(script_dir, "images")
+    
+    # Buscar todas las imágenes de Nemo
+    image_paths = glob.glob(os.path.join(images_dir, "nemo*.jpg"))
+    
+    for image_path in sorted(image_paths):
+        # Leer imagen
+        image = cv2.imread(image_path)
+        if image is None:
+            print(f"No se pudo cargar la imagen: {image_path}")
+            continue
+            
+        # Obtener el nombre base de la imagen
+        image_name = os.path.basename(image_path)
+        
+        # Segmentar la imagen
+        mask_orange, mask_white, mask_combined, result = segment_nemo(image)
+        
+        # Crear visualización
+        plt.figure(figsize=(15, 10))
+        
+        # Imagen original
+        plt.subplot(231)
+        plt.imshow(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
+        plt.title('Imagen Original')
+        plt.axis('off')
+        
+        # Máscara naranja
+        plt.subplot(232)
+        plt.imshow(mask_orange, cmap='gray')
+        plt.title('Máscara Naranja')
+        plt.axis('off')
+        
+        # Máscara blanca
+        plt.subplot(233)
+        plt.imshow(mask_white, cmap='gray')
+        plt.title('Máscara Blanca')
+        plt.axis('off')
+        
+        # Máscara combinada
+        plt.subplot(234)
+        plt.imshow(mask_combined, cmap='gray')
+        plt.title('Máscara Combinada')
+        plt.axis('off')
+        
+        # Resultado final
+        plt.subplot(235)
+        plt.imshow(cv2.cvtColor(result, cv2.COLOR_BGR2RGB))
+        plt.title('Resultado Final')
+        plt.axis('off')
+        
+        plt.suptitle(f'Segmentación de {image_name}')
+        plt.tight_layout()
+        plt.show()
+        
+        # Guardar resultados
+        output_dir = os.path.join(script_dir, "resultados")
+        os.makedirs(output_dir, exist_ok=True)
+        
+        cv2.imwrite(os.path.join(output_dir, f"{image_name}_mask_orange.jpg"), mask_orange)
+        cv2.imwrite(os.path.join(output_dir, f"{image_name}_mask_white.jpg"), mask_white)
+        cv2.imwrite(os.path.join(output_dir, f"{image_name}_mask_combined.jpg"), mask_combined)
+        cv2.imwrite(os.path.join(output_dir, f"{image_name}_result.jpg"), result)
+
+if __name__ == "__main__":
+    process_all_images()
 
     # Procesar máscara naranja
     # Primero eliminar ruido pequeño
